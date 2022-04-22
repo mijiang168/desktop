@@ -53,6 +53,7 @@ interface IAddExistingRepositoryState {
   readonly isRepositoryBare: boolean
   readonly isRepositoryUnsafe: boolean
   readonly repositoryUnsafePath?: string
+  readonly isTrustingRepository: boolean
 }
 
 /** The component for adding an existing local repository. */
@@ -71,6 +72,7 @@ export class AddExistingRepository extends React.Component<
       showNonGitRepositoryWarning: false,
       isRepositoryBare: false,
       isRepositoryUnsafe: false,
+      isTrustingRepository: false,
     }
   }
 
@@ -83,11 +85,13 @@ export class AddExistingRepository extends React.Component<
   }
 
   private onTrustDirectory = async () => {
+    this.setState({ isTrustingRepository: true })
     const { repositoryUnsafePath, path } = this.state
     if (repositoryUnsafePath) {
       await addSafeDirectory(repositoryUnsafePath)
     }
-    this.validatePath(path)
+    await this.validatePath(path)
+    this.setState({ isTrustingRepository: false })
   }
 
   private async updatePath(path: string) {
@@ -143,13 +147,26 @@ export class AddExistingRepository extends React.Component<
       )
     }
 
-    if (this.state.isRepositoryUnsafe) {
+    const { isRepositoryUnsafe, repositoryUnsafePath, path } = this.state
+
+    if (isRepositoryUnsafe && repositoryUnsafePath !== undefined) {
+      // Git for Windows will replace backslashes with slashes in the error
+      // message so we'll do the same to not show "the repo at path c:/repo"
+      // when the entered path is `c:\repo`.
+      const convertedPath = __WIN32__ ? path.replaceAll('\\', '/') : path
+
       return (
         <Row className="warning-helper-text">
           <Octicon symbol={OcticonSymbol.alert} />
           <div>
             <p>
-              The Git repository at <Ref>{this.state.repositoryUnsafePath}</Ref>
+              The Git repository
+              {repositoryUnsafePath !== convertedPath && (
+                <>
+                  {' at '}
+                  <Ref>{repositoryUnsafePath}</Ref>
+                </>
+              )}{' '}
               appears to be owned by another user on your machine. Adding
               untrusted repositories may automatically execute files in the
               repository.
@@ -194,6 +211,7 @@ export class AddExistingRepository extends React.Component<
         title={__DARWIN__ ? 'Add Local Repository' : 'Add local repository'}
         onSubmit={this.addRepository}
         onDismissed={this.props.onDismissed}
+        loading={this.state.isTrustingRepository}
       >
         <DialogContent>
           <Row>
